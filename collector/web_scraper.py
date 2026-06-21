@@ -1,162 +1,191 @@
 # ============================================================
 # collector/web_scraper.py
-# Scrapes brand's own website for tone analysis
-# Strategy: BeautifulSoup first → Playwright fallback if JS-rendered
-# Scrapes: homepage + /about + /blog (or /news)
-# Returns a single combined text block
+# Pulls brand background context from Wikipedia using the
+# clean Extract API (plain text, no HTML parsing headaches).
+# Used as supplementary context for the Groq strategy report —
+# NOT as a sentiment source. Sentiment comes from News + YouTube.
 # ============================================================
 
 import requests
-from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # ── Constants ───────────────────────────────────────────────
-MIN_WORDS = 200  # Below this = JS-rendered site, trigger Playwright
-
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    )
+    "User-Agent": "BrandIntelligenceAnalyzer/1.0 (student portfolio project)"
 }
 
-# ── Known content-rich subdomains per brand ──────────────────
-BRAND_URLS = {
-    "nike": [
-        "https://about.nike.com",
-        "https://news.nike.com",
-    ],
-    "coca-cola": [
-        "https://www.coca-colacompany.com/about-us",
-        "https://www.coca-colacompany.com/news",
-    ],
-    "apple": [
-        "https://www.apple.com/newsroom",
-        "https://www.apple.com/leadership",
-    ],
-    "samsung": [
-        "https://news.samsung.com/global",
-        "https://www.samsung.com/us/about-samsung",
-    ],
-}
+WIKI_API_URL = "https://en.wikipedia.org/w/api.php"
+MAX_WORDS = 3000  # Cap context length — we don't need the whole article
 
-# Default paths for unknown brands
-DEFAULT_PATHS = ["", "/about", "/newsroom", "/press"]
+# Section headers that indicate negative/critical content, if present
+NEGATIVE_SECTION_KEYWORDS = [
+    "criticism", "controversy", "controversies", "lawsuit",
+    "scandal", "legal issues", "boycott", "backlash", "allegations"
+]
 
 
-# ── BeautifulSoup Scraper ────────────────────────────────────
-def _scrape_with_bs4(url: str) -> str:
+# ── Step 1: Find the correct Wikipedia page title ────────────
+def _find_wikipedia_title(brand: str) -> str | None:
     """
-    Attempts static HTML scraping with BeautifulSoup.
-    Returns extracted text or empty string if it fails.
+    Searches Wikipedia for the brand. Tries to avoid disambiguation
+    pages by preferring results with 'company', 'brand', 'Inc' etc.
+    in the title or snippet, falling back to the top result.
     """
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": brand,
+        "format": "json",
+        "srlimit": 5,
+    }
+
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        response = requests.get(WIKI_API_URL, params=params, headers=HEADERS, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
+        results = response.json().get("query", {}).get("search", [])
 
-        # Remove script, style, nav, footer noise
-        for tag in soup(["script", "style", "nav", "footer", "header"]):
-            tag.decompose()
+        if not results:
+            return None
 
-        text = soup.get_text(separator=" ", strip=True)
-        return text
+        # Prefer a result that looks like a company/brand page
+        brand_indicators = ["inc", "company", "corporation", "brand", "se", "ltd", "group"]
+        for result in results:
+            title_lower = result["title"].lower()
+            if any(ind in title_lower for ind in brand_indicators):
+                return result["title"]
+
+        # Fallback: just take the top result
+        return results[0]["title"]
 
     except Exception as e:
-        print(f"[WebScraper] BS4 failed for {url}: {e}")
-        return ""
+        print(f"[WebScraper] Wikipedia search failed for '{brand}': {e}")
+        return None
 
 
-# ── Playwright Scraper ───────────────────────────────────────
-def _scrape_with_playwright(url: str) -> str:
+# ── Step 2: Get clean plain-text extract ──────────────────────
+def _get_wikipedia_extract(title: str) -> str:
     """
-    Opens a real browser with Playwright to handle JS-rendered pages.
-    Used as fallback when BeautifulSoup gets insufficient content.
+    Fetches the clean plain-text extract for a Wikipedia page title
+    using the Extract API — no HTML parsing required.
     """
+    params = {
+        "action": "query",
+        "prop": "extracts",
+        "titles": title,
+        "format": "json",
+        "explaintext": True,
+    }
+
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(url, timeout=20000, wait_until="domcontentloaded")
-            page.wait_for_timeout(2000)  # Wait for JS to render
+        response = requests.get(WIKI_API_URL, params=params, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        pages = response.json().get("query", {}).get("pages", {})
 
-            # Remove noise elements via JS
-            page.evaluate("""
-                () => {
-                    ['script','style','nav','footer','header'].forEach(tag => {
-                        document.querySelectorAll(tag).forEach(el => el.remove())
-                    })
-                }
-            """)
+        for page_id, page in pages.items():
+            return page.get("extract", "")
 
-            text = page.inner_text("body")
-            browser.close()
-            return text
+        return ""
 
     except Exception as e:
-        print(f"[WebScraper] Playwright failed for {url}: {e}")
+        print(f"[WebScraper] Failed to fetch extract for '{title}': {e}")
         return ""
 
 
-# ── Single Page Scraper ──────────────────────────────────────
-def _scrape_page(url: str) -> str:
+# ── Step 3: Split into general vs negative sections ───────────
+def _split_sections(extract: str) -> dict:
     """
-    Tries BS4 first. If content < MIN_WORDS, falls back to Playwright.
+    Parses the '== Heading ==' style sections from the plain-text
+    extract and separates any negative/critical sections from
+    general content, if they exist.
     """
-    text = _scrape_with_bs4(url)
-    word_count = len(text.split())
+    general_parts = []
+    negative_parts = []
+    current_is_negative = False
 
-    if word_count < MIN_WORDS:
-        print(f"[WebScraper] BS4 got {word_count} words from {url} — switching to Playwright")
-        text = _scrape_with_playwright(url)
+    for line in extract.split("\n"):
+        stripped = line.strip()
 
-    return text
+        if stripped.startswith("==") and stripped.endswith("=="):
+            heading = stripped.strip("=").strip().lower()
+            current_is_negative = any(kw in heading for kw in NEGATIVE_SECTION_KEYWORDS)
+            continue
+
+        if len(stripped) < 30:
+            continue
+
+        if current_is_negative:
+            negative_parts.append(stripped)
+        else:
+            general_parts.append(stripped)
+
+    return {
+        "general_text": " ".join(general_parts),
+        "negative_text": " ".join(negative_parts),
+    }
 
 
 # ── Main Collection Function ─────────────────────────────────
-def collect_website(brand: str, base_url: str) -> dict:
+def collect_website(brand: str, base_url: str = "") -> dict:
     """
-    Scrapes brand website for tone analysis.
-    Uses known content-rich URLs for major brands,
-    falls back to default paths for others.
+    Fetches brand background context from Wikipedia.
+    Used as supplementary context for Groq, capped at MAX_WORDS.
+
+    Args:
+        brand: Brand name e.g. "Nike"
+        base_url: Kept for compatibility, not used
+
+    Returns:
+        Dict with general_text, negative_text (if any), combined text, metadata
     """
-    brand_key = brand.lower()
-    all_text_parts = []
+    print(f"[WebScraper] Searching Wikipedia for '{brand}'")
+    title = _find_wikipedia_title(brand)
 
-    # Check if we have known good URLs for this brand
-    if brand_key in BRAND_URLS:
-        urls_to_scrape = BRAND_URLS[brand_key]
-        print(f"[WebScraper] Using known content URLs for {brand}")
-    else:
-        base_url = base_url.rstrip("/")
-        urls_to_scrape = [f"{base_url}{path}" for path in DEFAULT_PATHS]
+    if not title:
+        print(f"[WebScraper] No Wikipedia page found for '{brand}'")
+        return {
+            "source": "wikipedia", "brand": brand, "text": "",
+            "general_text": "", "negative_text": "", "word_count": 0, "title": "",
+        }
 
-    for url in urls_to_scrape:
-        print(f"[WebScraper] Scraping {url}")
-        text = _scrape_page(url)
-        if text:
-            all_text_parts.append(text)
+    print(f"[WebScraper] Found Wikipedia page: '{title}'")
+    extract = _get_wikipedia_extract(title)
 
-    combined_text = " ".join(all_text_parts)
+    if not extract:
+        return {
+            "source": "wikipedia", "brand": brand, "text": "",
+            "general_text": "", "negative_text": "", "word_count": 0, "title": title,
+        }
+
+    sections = _split_sections(extract)
+
+    # Cap general text length — we only need enough for context
+    general_words = sections["general_text"].split()
+    if len(general_words) > MAX_WORDS:
+        sections["general_text"] = " ".join(general_words[:MAX_WORDS])
+
+    combined_text = sections["general_text"] + " " + sections["negative_text"]
     word_count = len(combined_text.split())
 
-    print(f"[WebScraper] Total words scraped from {brand} website: {word_count}")
+    has_negative = len(sections["negative_text"].split()) > 0
+    print(f"[WebScraper] Total words: {word_count} "
+          f"(general: {len(sections['general_text'].split())}, "
+          f"negative/critical section found: {has_negative})")
 
     return {
-        "source": "website",
+        "source": "wikipedia",
         "brand": brand,
-        "text": combined_text,
+        "text": combined_text.strip(),
+        "general_text": sections["general_text"],
+        "negative_text": sections["negative_text"],
         "word_count": word_count,
-        "base_url": base_url if brand_key not in BRAND_URLS else urls_to_scrape[0],
+        "title": title,
     }
 
 
 # ── Quick Test ───────────────────────────────────────────────
 if __name__ == "__main__":
-    result = collect_website("Nike", "https://www.nike.com")
-    print(f"\nWord count: {result['word_count']}")
-    print(f"Preview: {result['text'][:300]}")
+    for brand in ["Nike", "Puma", "Coca-Cola"]:
+        print(f"\n=== Testing: {brand} ===")
+        result = collect_website(brand)
+        print(f"Title matched: {result['title']}")
+        print(f"Word count: {result['word_count']}")
+        print(f"Preview: {result['general_text'][:200]}")
