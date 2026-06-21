@@ -1,1 +1,19 @@
-pip install lxml
+requests
+beautifulsoup4
+lxml
+newsapi-python
+google-api-python-client
+vaderSentiment
+transformers
+torch
+keybert
+bertopic
+hdbscan
+streamlit
+plotly
+reportlab
+groq
+python-dotenv
+wordcloud
+matplotlib
+pandas
