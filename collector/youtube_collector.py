@@ -93,6 +93,8 @@ def collect_youtube(brand: str) -> list[dict]:
                 if len(text) < 20:
                     continue
 
+                
+
                 stats = stats_map.get(vid_id, {})
 
                 collected.append({

@@ -4,7 +4,7 @@
 # Runs on all collected text combined to find top keywords
 # associated with the brand across all sources
 # ============================================================
-
+from nlp.text_cleaning import clean_text
 from keybert import KeyBERT
 
 # ── Constants ───────────────────────────────────────────────
@@ -30,13 +30,17 @@ def _get_keybert_model():
 
 
 # ── Main Function — Extract Keywords ───────────────────────────
-def extract_keywords(documents: list[dict], top_n: int = TOP_N_KEYWORDS) -> list[dict]:
+def extract_keywords(documents: list[dict], top_n: int = TOP_N_KEYWORDS, brand: str = "") -> list[dict]:
     """
     Combines all document text and extracts top keywords using KeyBERT.
+    If brand is provided, filters to brand-relevant documents first
+    (title must contain brand name) to reduce noise from loosely
+    matched articles/videos.
 
     Args:
         documents: list of dicts, each must have a "text" field
         top_n: number of keywords to return
+        brand: brand name for relevance filtering (optional but recommended)
 
     Returns:
         List of dicts: [{"keyword": "...", "score": 0.45}, ...]
@@ -46,8 +50,14 @@ def extract_keywords(documents: list[dict], top_n: int = TOP_N_KEYWORDS) -> list
         print("[Keywords] No documents provided.")
         return []
 
-    # Combine all text into one block
-    combined_text = " ".join(doc.get("text", "") for doc in documents)
+    if brand:
+        from nlp.relevance_filter import filter_relevant_documents
+        documents = filter_relevant_documents(documents, brand)
+
+    from nlp.text_cleaning import clean_text
+
+    # Combine all text into one block, cleaning each document first
+    combined_text = " ".join(clean_text(doc.get("text", "")) for doc in documents)
     combined_text = combined_text.strip()
 
     if not combined_text:

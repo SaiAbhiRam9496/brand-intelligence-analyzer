@@ -74,6 +74,8 @@ def collect_news(brand: str) -> list[dict]:
                 if len(text) < 20:
                     continue
 
+                
+
                 collected.append({
                     "source": "news",
                     "text": text,
