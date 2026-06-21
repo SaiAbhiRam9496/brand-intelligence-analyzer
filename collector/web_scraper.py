@@ -24,18 +24,28 @@ NEGATIVE_SECTION_KEYWORDS = [
 
 
 # ── Step 1: Find the correct Wikipedia page title ────────────
+def _is_disambiguation_page(extract: str) -> bool:
+    """
+    Detects Wikipedia disambiguation pages by their characteristic
+    'may refer to' / '==' heavy, short-paragraph structure.
+    """
+    lowered = extract[:300].lower()
+    return "may refer to" in lowered or "may also refer to" in lowered
+
+
 def _find_wikipedia_title(brand: str) -> str | None:
     """
-    Searches Wikipedia for the brand. Tries to avoid disambiguation
-    pages by preferring results with 'company', 'brand', 'Inc' etc.
-    in the title or snippet, falling back to the top result.
+    Searches Wikipedia for the brand's company/organization page.
+    Tries exact and near-exact title matches first, but verifies
+    each candidate isn't a disambiguation page or too short before
+    accepting it — falling back to the next candidate if so.
     """
     params = {
         "action": "query",
         "list": "search",
         "srsearch": brand,
         "format": "json",
-        "srlimit": 5,
+        "srlimit": 8,
     }
 
     try:
@@ -46,20 +56,48 @@ def _find_wikipedia_title(brand: str) -> str | None:
         if not results:
             return None
 
-        # Prefer a result that looks like a company/brand page
+        brand_lower = brand.lower().strip()
         brand_indicators = ["inc", "company", "corporation", "brand", "se", "ltd", "group"]
-        for result in results:
-            title_lower = result["title"].lower()
-            if any(ind in title_lower for ind in brand_indicators):
-                return result["title"]
 
-        # Fallback: just take the top result
-        return results[0]["title"]
+        # Build a priority-ordered candidate list
+        candidates = []
+
+        # Priority 1: exact title match
+        candidates += [r["title"] for r in results if r["title"].lower().strip() == brand_lower]
+        # Priority 2: brand name + company indicator
+        candidates += [
+            r["title"] for r in results
+            if brand_lower in r["title"].lower()
+            and any(ind in r["title"].lower() for ind in brand_indicators)
+            and r["title"] not in candidates
+        ]
+        # Priority 3: starts with brand name + comma (e.g. "Starbucks, Inc.")
+        candidates += [
+            r["title"] for r in results
+            if r["title"].lower().startswith(brand_lower + ",") and r["title"] not in candidates
+        ]
+        # Priority 4: everything else, in original search order
+        candidates += [r["title"] for r in results if r["title"] not in candidates]
+
+        # Walk candidates, skip disambiguation pages / very short pages
+        for title in candidates:
+            extract = _get_wikipedia_extract(title)
+            if not extract:
+                continue
+            if _is_disambiguation_page(extract):
+                print(f"[WebScraper] '{title}' is a disambiguation page, trying next candidate")
+                continue
+            if len(extract.split()) < 100:
+                print(f"[WebScraper] '{title}' too short ({len(extract.split())} words), trying next candidate")
+                continue
+            return title
+
+        # Nothing good found — return top result as last resort
+        return results[0]["title"] if results else None
 
     except Exception as e:
         print(f"[WebScraper] Wikipedia search failed for '{brand}': {e}")
         return None
-
 
 # ── Step 2: Get clean plain-text extract ──────────────────────
 def _get_wikipedia_extract(title: str) -> str:
