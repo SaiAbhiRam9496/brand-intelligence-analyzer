@@ -246,22 +246,22 @@ def _build_methodology_page() -> list:
 
     elements.append(Paragraph("Data Sources", _styles["SubHeading"]))
     sources_text = (
-        "This report was generated using publicly available data from NewsAPI "
+        "This report aggregates public data collected from four sources: NewsAPI "
         "(news headlines and descriptions, last 30 days), YouTube Data API v3 "
-        "(video titles, descriptions, and engagement metrics), and Wikipedia "
-        "(brand background and context)."
+        "(public video comment threads), Google Play Store app reviews, and Reddit search "
+        "mentions. Supplementary brand-owned tone context is fetched from the brand's "
+        "official YouTube channel."
     )
     elements.append(Paragraph(sources_text, _styles["BodyText2"]))
     elements.append(Spacer(1, 0.15 * inch))
 
     elements.append(Paragraph("Known Limitations", _styles["SubHeading"]))
     limitations = [
-        "News data is limited to the last 30 days due to free-tier API restrictions — no long-term historical analysis.",
-        "YouTube analysis is based on titles and descriptions only; comments and video content are not analyzed.",
-        "Topic modeling (root-cause clustering) requires a minimum of 300 negative documents to run reliably; if this threshold is not met, topic modeling is skipped.",
-        "Sentiment analysis may misclassify sarcasm or highly nuanced text.",
-        "This tool is scoped to large, well-known brands with substantial public coverage. Small or niche brands may yield insufficient data.",
-        "Analysis is limited to English-language content.",
+        "News data is limited to the last 30 days due to free-tier API restrictions.",
+        "Topic modeling uses a dynamic clustering threshold that skips execution if the total number of negative comments/reviews is under 15.",
+        "Sentiment analysis utilizes VADER and DistilBERT, which may occasionally misclassify sarcastic or highly nuanced expressions.",
+        "Play Store review tracking relies on matching the brand's primary mobile application package name.",
+        "Non-English data is automatically filtered out via language detection, which may reduce volume for brands in regional markets.",
     ]
     items = [ListItem(Paragraph(lim, _styles["BodyText2"])) for lim in limitations]
     elements.append(ListFlowable(items, bulletType="bullet"))
