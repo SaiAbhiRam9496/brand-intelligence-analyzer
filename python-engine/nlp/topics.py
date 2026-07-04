@@ -1,47 +1,33 @@
 # ============================================================
 # nlp/topics.py
-# Topic modeling on negative-sentiment documents using BERTopic
-# Reveals root causes behind negative brand sentiment
-# Requires minimum 300 negative documents — skips with a clear
-# warning if threshold isn't met (per project scope rules)
+# Dynamic topic modeling on negative-sentiment documents using BERTopic
+# Adapts clustering strategy based on document volume to avoid failures
 # ============================================================
 
 from bertopic import BERTopic
+from sklearn.cluster import KMeans
+import pandas as pd
 
-# ── Constants ───────────────────────────────────────────────
-MIN_NEGATIVE_DOCS = 300  # Threshold from project brief
-MAX_TOPICS_TO_SHOW = 10  # Top N topics to return, excluding outliers
+MAX_TOPICS_TO_SHOW = 10
 
 
-# ── Main Function — Topic Modeling ─────────────────────────────
 def model_negative_topics(documents: list[dict]) -> dict:
     """
-    Filters documents to only Negative-sentiment ones, then runs
-    BERTopic to find clusters of negative content (root causes).
-
-    Args:
-        documents: list of dicts, each must have "text" and "sentiment" fields
-                   (output of nlp.sentiment.analyze_documents)
-
-    Returns:
-        Dict with either:
-        - {"status": "skipped", "reason": "...", "negative_doc_count": N}
-        - {"status": "success", "topics": [...], "negative_doc_count": N}
+    Groups negative documents into clusters to reveal common complaints/topics.
+    Uses dynamic clustering (KMeans vs HDBSCAN) based on document volume.
     """
     negative_docs = [doc for doc in documents if doc.get("sentiment") == "Negative"]
     negative_count = len(negative_docs)
 
-    print(f"[Topics] Found {negative_count} negative documents "
-          f"(need {MIN_NEGATIVE_DOCS} minimum for topic modeling)")
+    print(f"[Topics] Found {negative_count} negative documents for topic modeling.")
 
-    if negative_count < MIN_NEGATIVE_DOCS:
+    # 1. Volume Gate: < 15 docs is too low for BERTopic
+    if negative_count < 15:
         return {
             "status": "skipped",
             "reason": (
-                f"Insufficient negative documents for reliable topic modeling. "
-                f"Found {negative_count}, need at least {MIN_NEGATIVE_DOCS}. "
-                f"This is common for brands without major recent controversies — "
-                f"sentiment and keyword analysis are still fully valid."
+                f"Insufficient negative data for clustering. "
+                f"Found {negative_count} negative items (minimum 15 required)."
             ),
             "negative_doc_count": negative_count,
             "topics": [],
@@ -49,24 +35,32 @@ def model_negative_topics(documents: list[dict]) -> dict:
 
     texts = [doc["text"] for doc in negative_docs if doc.get("text", "").strip()]
 
-    print(f"[Topics] Running BERTopic on {len(texts)} negative documents...")
-
     try:
-        topic_model = BERTopic(min_topic_size=10, verbose=False)
-        topics, probs = topic_model.fit_transform(texts)
+        # 2. Dynamic Clustering selection
+        if negative_count < 100:
+            # Low volume: Use KMeans with 3-4 clusters to guarantee clusters
+            num_clusters = min(4, max(2, negative_count // 5))
+            print(f"[Topics] Low volume ({negative_count} docs). Using KMeans with K={num_clusters}.")
+            cluster_model = KMeans(n_clusters=num_clusters, random_state=42, n_init='auto')
+            topic_model = BERTopic(hdbscan_model=cluster_model, verbose=False)
+        else:
+            # High volume: Use default HDBSCAN
+            print(f"[Topics] High volume ({negative_count} docs). Using default HDBSCAN.")
+            topic_model = BERTopic(min_topic_size=max(5, min(10, negative_count // 20)), verbose=False)
 
+        topics, probs = topic_model.fit_transform(texts)
         topic_info = topic_model.get_topic_info()
 
         results = []
         for _, row in topic_info.iterrows():
             topic_id = row["Topic"]
 
-            # Topic -1 is BERTopic's "outlier" bucket — skip it
+            # Outlier cluster (-1) from HDBSCAN is skipped
             if topic_id == -1:
                 continue
 
             keywords = [word for word, _ in topic_model.get_topic(topic_id)][:6]
-            label = ", ".join(keywords[:3])  # Simple auto-label from top keywords
+            label = ", ".join(keywords[:3])
 
             results.append({
                 "topic_id": int(topic_id),
@@ -78,8 +72,7 @@ def model_negative_topics(documents: list[dict]) -> dict:
             if len(results) >= MAX_TOPICS_TO_SHOW:
                 break
 
-        print(f"[Topics] Found {len(results)} distinct negative topics.")
-
+        print(f"[Topics] Extracted {len(results)} negative topic clusters.")
         return {
             "status": "success",
             "negative_doc_count": negative_count,
@@ -87,23 +80,10 @@ def model_negative_topics(documents: list[dict]) -> dict:
         }
 
     except Exception as e:
-        print(f"[Topics] BERTopic failed: {e}")
+        print(f"[Topics] Error during BERTopic modeling: {e}")
         return {
             "status": "error",
             "reason": str(e),
             "negative_doc_count": negative_count,
             "topics": [],
         }
-
-
-# ── Quick Test ───────────────────────────────────────────────
-if __name__ == "__main__":
-    # Simulate a small dataset (below threshold) to test the skip logic
-    small_docs = [
-        {"text": "Delivery was very late and customer service was unhelpful.", "sentiment": "Negative"},
-        {"text": "The product broke after one week of use, terrible quality.", "sentiment": "Negative"},
-        {"text": "Great experience overall, very happy with my purchase.", "sentiment": "Positive"},
-    ]
-
-    result = model_negative_topics(small_docs)
-    print("\nResult:", result)

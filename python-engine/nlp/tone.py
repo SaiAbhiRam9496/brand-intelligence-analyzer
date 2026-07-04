@@ -1,9 +1,7 @@
-# ============================================================
 # nlp/tone.py
 # Tone detection using HuggingFace zero-shot classification
-# Runs on the brand's Wikipedia text to detect overall tone
-# Reveals how the brand is described vs how public perceives it
-# ============================================================
+# Runs on official brand channel content to detect the brand's intended tone
+# Reveals how the brand presents itself vs how the public perceives it
 
 from transformers import pipeline
 
