@@ -1,0 +1,48 @@
+# Environment files
+**/.*env
+**/.env
+**/.env.*
+
+# Python Cache & VMs
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.cache/
+**/venv/
+**/env/
+**/.streamlit/
+
+# Python Engine outputs & logs
+**/debug_groq_failures.log
+**/*.pdf
+**/temp_*.pdf
+
+# Java/Maven Build Outputs
+**/target/
+**/*.class
+**/*.jar
+**/*.war
+**/*.nar
+**/*.ear
+**/*.zip
+**/*.tar.gz
+**/*.rar
+
+# Spring Tools / Eclipse metadata
+**/.classpath
+**/.project
+**/.settings/
+**/.metadata/
+**/bin/
+
+# IntelliJ IDEA metadata
+**/.idea/
+**/*.iml
+**/*.ipr
+**/*.iws
+
+# OS files
+.DS_Store
+Thumbs.db

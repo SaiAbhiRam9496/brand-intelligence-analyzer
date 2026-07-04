@@ -1,0 +1,25 @@
+# Environment variables — NEVER push API keys
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# HuggingFace model cache
+.cache/
+
+# Intermediate data saves
+data/
+*.json
+
+# Virtual environment
+venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit cache
+.streamlit/
