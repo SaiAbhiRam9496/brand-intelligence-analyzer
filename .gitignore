@@ -2,6 +2,7 @@
 **/.*env
 **/.env
 **/.env.*
+spring-backend/src/main/resources/application.properties
 
 # Python Cache & VMs
 **/__pycache__/
