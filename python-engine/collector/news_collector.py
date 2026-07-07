@@ -74,7 +74,10 @@ def collect_news(brand: str) -> list[dict]:
                 if len(text) < 20:
                     continue
 
-                
+                # Ensure the brand is actually mentioned in the title or description
+                # NewsAPI matches the body too, which can make the snippet look completely irrelevant
+                if brand.lower() not in text.lower():
+                    continue
 
                 collected.append({
                     "source": "news",

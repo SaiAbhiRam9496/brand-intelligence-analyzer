@@ -1,11 +1,12 @@
 # ============================================================
 # nlp/topics.py
 # Dynamic topic modeling on negative-sentiment documents using BERTopic
-# Adapts clustering strategy based on document volume to avoid failures
+# Adapts clustering strategy based on document volume to avoid failures.
+# Includes a TF-IDF + KMeans fallback if BERTopic/sentence_transformers fails.
 # ============================================================
 
-from bertopic import BERTopic
 from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
 import pandas as pd
 
 MAX_TOPICS_TO_SHOW = 10
@@ -36,6 +37,8 @@ def model_negative_topics(documents: list[dict]) -> dict:
     texts = [doc["text"] for doc in negative_docs if doc.get("text", "").strip()]
 
     try:
+        from bertopic import BERTopic
+        
         # 2. Dynamic Clustering selection
         if negative_count < 100:
             # Low volume: Use KMeans with 3-4 clusters to guarantee clusters
@@ -72,7 +75,7 @@ def model_negative_topics(documents: list[dict]) -> dict:
             if len(results) >= MAX_TOPICS_TO_SHOW:
                 break
 
-        print(f"[Topics] Extracted {len(results)} negative topic clusters.")
+        print(f"[Topics] Extracted {len(results)} negative topic clusters using BERTopic.")
         return {
             "status": "success",
             "negative_doc_count": negative_count,
@@ -80,10 +83,41 @@ def model_negative_topics(documents: list[dict]) -> dict:
         }
 
     except Exception as e:
-        print(f"[Topics] Error during BERTopic modeling: {e}")
-        return {
-            "status": "error",
-            "reason": str(e),
-            "negative_doc_count": negative_count,
-            "topics": [],
-        }
+        print(f"[Topics] Error during BERTopic modeling: {e}. Falling back to TF-IDF + KMeans.")
+        try:
+            vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
+            X = vectorizer.fit_transform(texts)
+            
+            num_clusters = min(5, max(2, negative_count // 10))
+            kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init='auto')
+            kmeans.fit(X)
+            
+            order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
+            terms = vectorizer.get_feature_names_out()
+            
+            results = []
+            for i in range(num_clusters):
+                keywords = [terms[ind] for ind in order_centroids[i, :6]]
+                label = ", ".join(keywords[:3])
+                count = sum(1 for label_idx in kmeans.labels_ if label_idx == i)
+                results.append({
+                    "topic_id": i,
+                    "label": label,
+                    "keywords": keywords,
+                    "document_count": int(count),
+                })
+                
+            print(f"[Topics] Extracted {len(results)} negative topic clusters using TF-IDF Fallback.")
+            return {
+                "status": "success",
+                "negative_doc_count": negative_count,
+                "topics": results,
+            }
+        except Exception as fallback_e:
+            print(f"[Topics] Fallback clustering also failed: {fallback_e}")
+            return {
+                "status": "error",
+                "reason": str(e),
+                "negative_doc_count": negative_count,
+                "topics": [],
+            }

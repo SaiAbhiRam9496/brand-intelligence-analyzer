@@ -48,7 +48,9 @@ def _build_prompt(
     negative_examples = "\n".join(f"- {doc[:200]}" for doc in sample_negative_docs[:MAX_SAMPLE_DOCS])
     positive_examples = "\n".join(f"- {doc[:200]}" for doc in sample_positive_docs[:MAX_SAMPLE_DOCS])
 
-    prompt = f"""You are a senior brand strategy consultant analyzing {brand} based on real collected data.
+    prompt = f"""You are a senior brand strategy consultant analyzing the brand **{brand}** based on real collected data.
+
+IMPORTANT: The collected data contains noise. You may see mentions of other brands, people, or unrelated products. You MUST ignore those. Your ONLY focus is **{brand}**. Ensure your strategy report explicitly targets **{brand}** and its products/services.
 
 ## SENTIMENT OVERVIEW
 Positive: {sentiment_summary['positive_pct']}%
@@ -80,11 +82,11 @@ Based ONLY on the evidence above, provide:
 
 1. **Current Marketing Strategy** (2-3 sentences): What strategy does the evidence suggest {brand} is currently pursuing?
 
-2. **Strengths** (3 bullet points): What is working well, based on the data?
+2. **Strengths** (3 bullet points): What is working well for {brand}, based on the data?
 
-3. **Weaknesses** (3 bullet points): What is working against the brand, based on the data?
+3. **Weaknesses** (3 bullet points): What is working against {brand}, based on the data?
 
-4. **5 Specific Actionable Recommendations**: Concrete, specific actions — not generic advice. Each should directly address something visible in the data above.
+4. **5 Specific Actionable Recommendations**: Concrete, specific actions for {brand} — not generic advice. Each should directly address something visible in the data above.
 
 Be specific and evidence-based. Do not invent facts not supported by the data provided. If data is limited in some area, acknowledge that honestly rather than speculating.
 
