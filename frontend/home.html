@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brand Intelligence Analyzer</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="nav-bar">
+                <a href="home.html" class="logo">BrandIntel<span class="logo-dot"></span></a>
+                <nav>
+                    <ul>
+                        <li><a href="home.html" class="active">Home</a></li>
+                        <li><a href="about.html">About</a></li>
+                        <li id="authNav">
+                            <!-- Injected dynamically -->
+                            <a href="login.html" class="btn btn-secondary">Log In</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <main style="flex: 1; display: flex; align-items: center; justify-content: center;">
+            <section class="hero">
+                <div class="hero-badge">AI-Powered Analytics</div>
+                <h1>Analyze Brand Sentiment & <br><span>Uncover Competitor Strategy</span></h1>
+                <p>
+                    Get instant strategic insights from News, YouTube comments, App Store reviews, and Reddit. Run NLP pipelines to generate full PDF marketing strategy reports.
+                </p>
+                <div style="display: flex; gap: 1rem; justify-content: center;">
+                    <a href="dashboard.html" class="btn btn-primary">Go to Dashboard</a>
+                    <a href="about.html" class="btn btn-secondary">Learn More</a>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            &copy; 2026 Brand Intelligence Analyzer. All rights reserved.
+        </footer>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        if (Auth.isAuthenticated()) {
+            document.getElementById('authNav').innerHTML = `
+                <a href="dashboard.html" class="btn btn-secondary">Dashboard</a>
+            `;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - Brand Intelligence Analyzer</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .about-container {
+            max-width: 800px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        .about-container h2 {
+            font-size: 2.2rem;
+            margin-bottom: 1.5rem;
+            font-weight: 700;
+        }
+        .about-container p {
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+            font-size: 1.05rem;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-top: 2.5rem;
+        }
+        .feature-item h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="nav-bar">
+                <a href="home.html" class="logo">BrandIntel<span class="logo-dot"></span></a>
+                <nav>
+                    <ul>
+                        <li><a href="home.html">Home</a></li>
+                        <li><a href="about.html" class="active">About</a></li>
+                        <li id="authNav"><a href="login.html" class="btn btn-secondary">Log In</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <main style="flex: 1;">
+            <div class="about-container">
+                <h2>About the Platform</h2>
+                <p>
+                    The Brand Intelligence Analyzer is a modern multi-tier analytics system designed to track brand health, customer sentiment, and strategic market placement. 
+                </p>
+                <p>
+                    By scraping text data from multiple public social pipelines (News articles, YouTube comment sections, Google Play Store app reviews, and Reddit discussions), our NLP engine processes text to output brand sentiment ratings, topic categorizations, and intent classifications.
+                </p>
+
+                <div class="features-grid">
+                    <div class="card feature-item">
+                        <h3>Multi-Pipeline Collection</h3>
+                        <p style="font-size: 0.95rem; margin: 0;">Integrates multiple search nodes into one cohesive data stack, automatically filtering out noise and non-English text.</p>
+                    </div>
+                    <div class="card feature-item">
+                        <h3>Dynamic Topic Modeling</h3>
+                        <p style="font-size: 0.95rem; margin: 0;">Applies BERTopic with automated clustering adjustments to accurately summarize customer pain points.</p>
+                    </div>
+                    <div class="card feature-item">
+                        <h3>Zero-Shot Tone Alignment</h3>
+                        <p style="font-size: 0.95rem; margin: 0;">Analyzes target brand output against consumer opinion to detect presentation gaps.</p>
+                    </div>
+                    <div class="card feature-item">
+                        <h3>Strategic Groq Reports</h3>
+                        <p style="font-size: 0.95rem; margin: 0;">Leverages Llama 3 models to suggest practical product and marketing pivots.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            &copy; 2026 Brand Intelligence Analyzer. All rights reserved.
+        </footer>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        if (Auth.isAuthenticated()) {
+            document.getElementById('authNav').innerHTML = `
+                <a href="dashboard.html" class="btn btn-secondary">Dashboard</a>
+            `;
+        }
+    </script>
+</body>
+</html>

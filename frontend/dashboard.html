@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Brand Intelligence Analyzer</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            flex: 1;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            background: rgba(17, 24, 39, 0.4);
+            border-right: 1px solid var(--border-color);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+        .history-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            overflow-y: auto;
+            max-height: 350px;
+        }
+        .history-item {
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--accent-purple);
+        }
+
+        /* Content Area */
+        .content {
+            padding: 2.5rem;
+            overflow-y: auto;
+            max-height: calc(100vh - 75px);
+        }
+
+        /* Search Banner */
+        .search-banner {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .search-banner input {
+            flex: 1;
+            max-width: 500px;
+        }
+
+        /* Metrics grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .metric-card {
+            padding: 1.5rem;
+        }
+        .metric-card h3 {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Bottom Grid */
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* List Items */
+        .complaints-list, .topics-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .complaint-item {
+            padding: 1rem;
+            border-radius: 10px;
+            background: rgba(239, 68, 68, 0.05);
+            border-left: 4px solid var(--color-negative);
+        }
+        .topic-pill {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.8rem 1rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        /* Strategy report card */
+        .strategy-section {
+            margin-top: 2rem;
+        }
+        .strategy-block {
+            line-height: 1.7;
+            color: var(--text-secondary);
+        }
+
+        /* Loading Spinner overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(11, 15, 25, 0.9);
+            backdrop-filter: var(--glass-blur);
+            display: none;
+            justify-content: center;
+            flex-direction: column;
+            align-items: center;
+            z-index: 1000;
+            gap: 1.5rem;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: var(--accent-purple);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="nav-bar">
+                <a href="home.html" class="logo">BrandIntel<span class="logo-dot"></span></a>
+                <nav>
+                    <ul>
+                        <li><a href="home.html">Home</a></li>
+                        <li><a href="about.html">About</a></li>
+                        <li><button class="btn btn-secondary" onclick="Auth.logout()">Log Out</button></li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <div class="dashboard-layout">
+            <!-- Sidebar / History -->
+            <aside class="sidebar">
+                <div>
+                    <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 1rem;">Recent Analyses</h3>
+                    <ul class="history-list" id="historyList">
+                        <!-- Loaded dynamically -->
+                    </ul>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="content">
+                <div class="search-banner">
+                    <input type="text" id="brandSearch" class="form-control" placeholder="Search a brand (e.g. Nike, Puma)...">
+                    <button class="btn btn-primary" id="btnAnalyze">Run Analysis</button>
+                    <button class="btn btn-secondary" id="btnPdf" style="display: none;">Download PDF</button>
+                </div>
+
+                <!-- Dashboard Results (Hidden by default) -->
+                <div id="resultsWrapper" style="display: none;">
+                    <h2 id="brandTitle" style="font-size: 2rem; font-weight: 800; margin-bottom: 1.5rem; background: var(--grad-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Brand Report</h2>
+                    
+                    <!-- Metrics Row -->
+                    <div class="metrics-grid">
+                        <div class="card metric-card">
+                            <h3>Collected Data</h3>
+                            <div class="metric-value" id="valTotal">0</div>
+                        </div>
+                        <div class="card metric-card">
+                            <h3>Positive Pct</h3>
+                            <div class="metric-value" id="valPositive" style="color: var(--color-positive);">0%</div>
+                        </div>
+                        <div class="card metric-card">
+                            <h3>Negative Pct</h3>
+                            <div class="metric-value" id="valNegative" style="color: var(--color-negative);">0%</div>
+                        </div>
+                        <div class="card metric-card">
+                            <h3>Primary Tone</h3>
+                            <div class="metric-value" id="valTone" style="color: var(--accent-purple);">Dynamic</div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="charts-grid">
+                        <div class="card">
+                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">Sentiment Breakdown</h3>
+                            <div class="chart-container">
+                                <canvas id="sentimentPieChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <h3 style="font-size: 1rem; margin-bottom: 1rem;">Source Sentiment distribution</h3>
+                            <div class="chart-container">
+                                <canvas id="sourceBarChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Grid -->
+                    <div class="bottom-grid">
+                        <!-- Critical Topics -->
+                        <div class="card">
+                            <h3 style="font-size: 1rem;">Common Negative Themes</h3>
+                            <div class="topics-list" id="topicsList">
+                                <!-- Loaded dynamically -->
+                            </div>
+                        </div>
+                        
+                        <!-- Worst Reviews/Comments -->
+                        <div class="card">
+                            <h3 style="font-size: 1rem;">Critical Customer Feedback</h3>
+                            <div class="complaints-list" id="complaintsList">
+                                <!-- Loaded dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Strategy Report -->
+                    <div class="card strategy-section">
+                        <h3 style="font-size: 1.2rem; margin-bottom: 1rem; background: var(--grad-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 700;">AI Strategic Placement & Recommendations</h3>
+                        <div class="strategy-block" id="strategyReportText">
+                            <!-- Injected Markdown/Text -->
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <h3 id="loadingText" style="font-weight: 500;">Scraping and analyzing brand metrics...</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">This may take up to a minute to process heavy NLP and social pipelines.</p>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
