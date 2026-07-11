@@ -100,6 +100,21 @@ function displayResults(brand, data) {
     document.getElementById('resultsWrapper').style.display = 'block';
     document.getElementById('brandTitle').textContent = `${brand.toUpperCase()} Brand Insights`;
     
+    // Render warnings if any
+    let warningsEl = document.getElementById('pipelineWarnings');
+    if (data.pipeline_warnings && data.pipeline_warnings.length > 0) {
+        if (!warningsEl) {
+            warningsEl = document.createElement('div');
+            warningsEl.id = 'pipelineWarnings';
+            warningsEl.style = "background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.95rem;";
+            document.getElementById('brandTitle').after(warningsEl);
+        }
+        warningsEl.innerHTML = "<strong>Notice:</strong> Some data sources were skipped due to API errors or rate limiting:<ul style='margin-top: 0.5rem; margin-left: 1.5rem;'>" + data.pipeline_warnings.map(w => `<li>${w}</li>`).join('') + "</ul>";
+        warningsEl.style.display = 'block';
+    } else if (warningsEl) {
+        warningsEl.style.display = 'none';
+    }
+    
     // Set metrics
     const summary = data.sentiment_summary || {};
     document.getElementById('valTotal').textContent = summary.total_docs || 0;
@@ -112,42 +127,56 @@ function displayResults(brand, data) {
     // Setup charts
     renderCharts(summary);
 
-    // Populate common topics
-    const topicsEl = document.getElementById('topicsList');
-    topicsEl.innerHTML = '';
-    const topicsData = data.topics_result || {};
-    
-    if (topicsData.status === 'skipped' || !topicsData.topics || topicsData.topics.length === 0) {
-        topicsEl.innerHTML = `<div class="topic-pill"><span style="color: var(--text-secondary);">${topicsData.reason || "Insufficient negative comments to group."}</span></div>`;
-    } else {
-        topicsData.topics.forEach(t => {
-            const div = document.createElement('div');
-            div.className = 'topic-pill';
-            div.innerHTML = `
-                <span><strong>Theme ${t.topic_id + 1}:</strong> ${t.label}</span>
-                <span class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.2rem 0.6rem;">${t.document_count} items</span>
-            `;
-            topicsEl.appendChild(div);
-        });
-    }
-
-    // Populate Critical Complaints
+    // Populate Critical Complaints using Issues Structure
     const complaintsEl = document.getElementById('complaintsList');
     complaintsEl.innerHTML = '';
-    const worst = data.worst_docs || [];
     
-    if (worst.length === 0) {
+    const issues = data.issues || [];
+    const strategy = data.strategy_report || {};
+    const issueRecs = strategy.issue_recommendations || [];
+    
+    if (issues.length === 0) {
         complaintsEl.innerHTML = '<div style="color: var(--text-muted); font-size: 0.9rem;">No major negative feedback parsed.</div>';
     } else {
-        worst.slice(0, 4).forEach(doc => {
+        issues.forEach((issue, idx) => {
             const div = document.createElement('div');
-            div.className = 'complaint-item';
+            div.className = 'accordion';
+            
+            let docsHtml = '';
+            issue.documents.forEach(doc => {
+                docsHtml += `
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.4rem; margin-top: 0.5rem;">
+                        <span>Source: <strong>${doc.source}</strong></span>
+                        <span>Date: ${doc.date || 'N/A'}</span>
+                    </div>
+                    <p style="font-size:0.9rem; line-height:1.5; margin-bottom: 0.5rem;">"${doc.text}"</p>
+                `;
+            });
+
+            let recText = "No specific recommendation generated for this issue.";
+            if (issueRecs && idx < issueRecs.length && issueRecs[idx].recommendation) {
+                recText = issueRecs[idx].recommendation;
+            }
+
+            const headerTitle = issue.cluster_label ? `Cluster ${idx+1}` : `Individual Complaint`;
+
             div.innerHTML = `
-                <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.4rem;">
-                    <span>Source: <strong>${doc.source}</strong></span>
-                    <span>Date: ${doc.date}</span>
+                <div class="accordion-header" onclick="this.nextElementSibling.classList.toggle('active')">
+                    <span>${headerTitle} (${issue.documents.length} items)</span>
+                    <span>▼</span>
                 </div>
-                <p style="font-size:0.9rem; line-height:1.5;">"${doc.text}"</p>
+                <div class="accordion-body">
+                    ${docsHtml}
+                    
+                    <div class="inner-accordion">
+                        <div class="inner-accordion-header" onclick="this.nextElementSibling.classList.toggle('active')">
+                            <span>▶ View AI Recommendation</span>
+                        </div>
+                        <div class="inner-accordion-body">
+                            <p style="font-size:0.85rem; color: var(--text-secondary);">${recText}</p>
+                        </div>
+                    </div>
+                </div>
             `;
             complaintsEl.appendChild(div);
         });
@@ -289,13 +318,8 @@ function formatStrategyJson(data) {
         html += '</ul>';
     }
     
-    if (data.recommendations && data.recommendations.length > 0) {
-        html += '<h3 style="font-size:1.3rem; margin-top:1.5rem; color:var(--text-primary); font-weight:700;">Actionable Recommendations</h3>';
-        data.recommendations.forEach((r, i) => {
-            html += `<h4 style="font-size:1.1rem; margin-top:1.2rem; color:var(--text-primary); font-weight:600;">${i+1}. ${r.title}</h4>`;
-            html += `<p style="margin-left: 1rem; margin-top: 0.3rem;">${r.explanation}</p>`;
-        });
-    }
+    // Global recommendations removed since they are now issue-specific and 
+    // rendered directly in the nested accordions.
     
     return html || "No structured strategy generated.";
 }

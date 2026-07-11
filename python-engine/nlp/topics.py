@@ -52,6 +52,11 @@ def model_negative_topics(documents: list[dict]) -> dict:
             topic_model = BERTopic(min_topic_size=max(5, min(10, negative_count // 20)), verbose=False)
 
         topics, probs = topic_model.fit_transform(texts)
+        
+        topic_to_docs = {}
+        for idx, topic_id in enumerate(topics):
+            topic_to_docs.setdefault(int(topic_id), []).append(negative_docs[idx])
+            
         topic_info = topic_model.get_topic_info()
 
         results = []
@@ -70,6 +75,7 @@ def model_negative_topics(documents: list[dict]) -> dict:
                 "label": label,
                 "keywords": keywords,
                 "document_count": int(row["Count"]),
+                "documents": topic_to_docs.get(int(topic_id), []),
             })
 
             if len(results) >= MAX_TOPICS_TO_SHOW:
@@ -92,6 +98,10 @@ def model_negative_topics(documents: list[dict]) -> dict:
             kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init='auto')
             kmeans.fit(X)
             
+            topic_to_docs = {}
+            for idx, label_idx in enumerate(kmeans.labels_):
+                topic_to_docs.setdefault(int(label_idx), []).append(negative_docs[idx])
+            
             order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
             terms = vectorizer.get_feature_names_out()
             
@@ -105,6 +115,7 @@ def model_negative_topics(documents: list[dict]) -> dict:
                     "label": label,
                     "keywords": keywords,
                     "document_count": int(count),
+                    "documents": topic_to_docs.get(i, []),
                 })
                 
             print(f"[Topics] Extracted {len(results)} negative topic clusters using TF-IDF Fallback.")

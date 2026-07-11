@@ -77,8 +77,8 @@ def generate_report_pdf(request: PDFRequest, background_tasks: BackgroundTasks):
             sentiment_summary=data.get("sentiment_summary", {}),
             strategy_report=data.get("strategy_report", {}),
             tone_result=data.get("tone_result", {}),
-            topics_result=data.get("topics_result", {}),
-            worst_docs=data.get("worst_docs", [])
+            wiki_data=data.get("wiki_data", {}),
+            issues=data.get("issues", [])
         )
 
         if not os.path.exists(temp_pdf_path):

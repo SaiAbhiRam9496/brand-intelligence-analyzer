@@ -15,7 +15,7 @@
         
         /* Sidebar */
         .sidebar {
-            background: rgba(17, 24, 39, 0.4);
+            background: var(--bg-secondary);
             border-right: 1px solid var(--border-color);
             padding: 2rem;
             display: flex;
@@ -33,7 +33,7 @@
         .history-item {
             padding: 0.8rem 1rem;
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.02);
+            background: #ffffff;
             border: 1px solid var(--border-color);
             cursor: pointer;
             transition: var(--transition-smooth);
@@ -119,15 +119,6 @@
             border-radius: 10px;
             background: rgba(239, 68, 68, 0.05);
             border-left: 4px solid var(--color-negative);
-        }
-        .topic-pill {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.8rem 1rem;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
         }
 
         /* Strategy report card */
@@ -243,18 +234,10 @@
                     </div>
 
                     <!-- Bottom Grid -->
-                    <div class="bottom-grid">
-                        <!-- Critical Topics -->
-                        <div class="card">
-                            <h3 style="font-size: 1rem;">Common Negative Themes</h3>
-                            <div class="topics-list" id="topicsList">
-                                <!-- Loaded dynamically -->
-                            </div>
-                        </div>
-                        
+                    <div class="bottom-grid" style="grid-template-columns: 1fr;">
                         <!-- Worst Reviews/Comments -->
                         <div class="card">
-                            <h3 style="font-size: 1rem;">Critical Customer Feedback</h3>
+                            <h3 style="font-size: 1rem;">Critical Customer Feedback & AI Recommendations</h3>
                             <div class="complaints-list" id="complaintsList">
                                 <!-- Loaded dynamically -->
                             </div>

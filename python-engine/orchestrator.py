@@ -29,6 +29,7 @@ def run_full_analysis(brand: str) -> dict:
     and strategic AI recommendation pipeline.
     """
     print(f"[Orchestrator] Starting analysis for brand: '{brand}'")
+    pipeline_warnings = []
 
     # Step 1: Data Collection
     news_docs = []
@@ -36,24 +37,28 @@ def run_full_analysis(brand: str) -> dict:
         news_docs = collect_news(brand)
     except Exception as e:
         print(f"[Orchestrator] News collection failed: {e}")
+        pipeline_warnings.append("NewsAPI data unavailable (Rate Limit or Missing Key).")
 
     yt_comments = []
     try:
         yt_comments = collect_youtube_comments(brand)
     except Exception as e:
         print(f"[Orchestrator] YouTube comments collection failed: {e}")
+        pipeline_warnings.append("YouTube data unavailable (Rate Limit or Quota Exceeded).")
 
     playstore_docs = []
     try:
         playstore_docs = collect_playstore_reviews(brand)
     except Exception as e:
         print(f"[Orchestrator] Play Store collection failed: {e}")
+        pipeline_warnings.append("Play Store data unavailable (App ID not found or Blocked).")
 
     reddit_docs = []
     try:
         reddit_docs = collect_reddit_mentions(brand)
     except Exception as e:
         print(f"[Orchestrator] Reddit collection failed: {e}")
+        pipeline_warnings.append("Reddit data unavailable (Platform 403 Rate Limit / Block).")
 
     # Combine sentiment pool
     all_docs = news_docs + yt_comments + playstore_docs + reddit_docs
@@ -77,6 +82,7 @@ def run_full_analysis(brand: str) -> dict:
         tone_text = collect_official_tone_data(brand)
     except Exception as e:
         print(f"[Orchestrator] YouTube tone collection failed: {e}")
+        pipeline_warnings.append("Official Brand YouTube Tone unavailable.")
 
     if tone_text:
         tone_result = detect_tone(tone_text)
@@ -89,6 +95,7 @@ def run_full_analysis(brand: str) -> dict:
         wiki_data = collect_wikipedia_context(brand)
     except Exception as e:
         print(f"[Orchestrator] Wikipedia context collection failed: {e}")
+        pipeline_warnings.append("Wikipedia context unavailable.")
 
     # Step 6: Filter relevant documents for keywords & topic modeling
     relevant_docs = filter_relevant_documents(analyzed_docs, brand, min_score=0.5)
@@ -124,18 +131,32 @@ def run_full_analysis(brand: str) -> dict:
     }
 
     # Step 10: Strategy Recommendations (Groq Llama 3)
-    negative_samples = [d["text"] for d in relevant_docs if d["sentiment"] == "Negative"][:10]
-    positive_samples = [d["text"] for d in relevant_docs if d["sentiment"] == "Positive"][:10]
+    issues = []
+    if topics_result.get("status") == "success":
+        for i, t in enumerate(topics_result["topics"]):
+            issues.append({
+                "cluster_label": f"Issue {i+1}",
+                "documents": t.get("documents", [])[:5]
+            })
+    else:
+        worst_relevant = sorted(
+            [d for d in relevant_docs if d["sentiment"] == "Negative"],
+            key=lambda d: d.get("sentiment_confidence", 0),
+            reverse=True,
+        )[:10]
+        for doc in worst_relevant:
+            issues.append({
+                "cluster_label": None,
+                "documents": [doc]
+            })
 
     strategy_report = generate_strategy_report(
         brand=brand,
         sentiment_summary=sentiment_summary,
         keywords=keywords,
         tone_result=tone_result,
-        topics_result=topics_result,
-        wikipedia_context=wiki_data.get("general_text", ""),
-        sample_negative_docs=negative_samples,
-        sample_positive_docs=positive_samples,
+        issues=issues,
+        wikipedia_context=wiki_data.get("general_text", "")
     )
 
     # Sort docs by negativity for dashboard tables
@@ -156,6 +177,8 @@ def run_full_analysis(brand: str) -> dict:
         "strategy_report": strategy_report,
         "wiki_data": wiki_data,
         "worst_docs": worst_docs,
+        "issues": issues,
+        "pipeline_warnings": pipeline_warnings,
     }
 
 

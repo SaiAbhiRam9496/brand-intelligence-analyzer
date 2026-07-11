@@ -1,9 +1,6 @@
 # ============================================================
 # report/pdf_generator.py
-# Generates a 7-page PDF brand intelligence report using ReportLab
-# Page 1: Cover | Page 2: Executive Summary | Page 3: Sentiment
-# Page 4: Negative Analysis | Page 5: Tone + Strategy
-# Page 6: Recommendations | Page 7: Methodology + Limitations
+# Generates a dynamic PDF brand intelligence report using ReportLab
 # ============================================================
 
 from datetime import datetime
@@ -13,7 +10,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, PageBreak,
-    Table, TableStyle, ListFlowable, ListItem,
+    Table, TableStyle, ListFlowable, ListItem, KeepTogether
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
@@ -40,7 +37,14 @@ _styles.add(ParagraphStyle(
     name="BodyText2", fontSize=10.5, leading=15,
     textColor=colors.HexColor("#333333"), spaceAfter=10, alignment=TA_LEFT,
 ))
-
+_styles.add(ParagraphStyle(
+    name="CitationText", fontSize=9, leading=12,
+    textColor=colors.HexColor("#666666"), spaceAfter=4, alignment=TA_LEFT, fontName="Helvetica-Oblique",
+))
+_styles.add(ParagraphStyle(
+    name="RecommendationText", fontSize=10.5, leading=15,
+    textColor=colors.HexColor("#00563B"), spaceAfter=10, alignment=TA_LEFT,
+))
 
 # ── Page 1: Cover ───────────────────────────────────────────
 def _build_cover_page(brand: str) -> list:
@@ -59,12 +63,22 @@ def _build_cover_page(brand: str) -> list:
     elements.append(PageBreak())
     return elements
 
-
 # ── Page 2: Executive Summary ──────────────────────────────
-def _build_executive_summary(brand: str, strategy_report: dict) -> list:
+def _build_executive_summary(brand: str, wikipedia_context: str, strategy_report: dict) -> list:
     elements = []
     elements.append(Paragraph("Executive Summary", _styles["SectionHeading"]))
 
+    if wikipedia_context and wikipedia_context.strip():
+        # Truncate to max 800 characters to prevent massive multi-page dumps
+        trunc_context = wikipedia_context.strip()
+        if len(trunc_context) > 800:
+            trunc_context = trunc_context[:800].rsplit(' ', 1)[0] + "..."
+            
+        elements.append(Paragraph("Brand Context", _styles["SubHeading"]))
+        elements.append(Paragraph(trunc_context, _styles["BodyText2"]))
+        elements.append(Spacer(1, 0.15 * inch))
+
+    elements.append(Paragraph("Current Strategy", _styles["SubHeading"]))
     current_strategy = strategy_report.get("current_strategy", "Not available.")
     elements.append(Paragraph(current_strategy, _styles["BodyText2"]))
     elements.append(Spacer(1, 0.2 * inch))
@@ -85,8 +99,7 @@ def _build_executive_summary(brand: str, strategy_report: dict) -> list:
     elements.append(PageBreak())
     return elements
 
-
-# ── Page 3: Sentiment Overview ─────────────────────────────
+# ── Page 4: Sentiment Overview ─────────────────────────────
 def _build_sentiment_page(sentiment_summary: dict) -> list:
     elements = []
     elements.append(Paragraph("Sentiment Overview", _styles["SectionHeading"]))
@@ -114,14 +127,24 @@ def _build_sentiment_page(sentiment_summary: dict) -> list:
     elements.append(Spacer(1, 0.3 * inch))
 
     by_source = sentiment_summary.get("by_source", {})
-    if by_source:
+    # Filter sources that actually have data
+    active_sources = {k: v for k, v in by_source.items() if any(c > 0 for c in v.values())}
+    
+    if active_sources:
         elements.append(Paragraph("Sentiment by Source", _styles["SubHeading"]))
         source_data = [["Source", "Positive", "Negative", "Neutral"]]
-        for src, counts in by_source.items():
+        for src, counts in active_sources.items():
+            formatted_src = src.replace("_", " ").title()
+            if src.lower() == "youtube":
+                formatted_src = "YouTube"
+            elif src.lower() == "youtube_comment":
+                formatted_src = "YouTube Comment"
+                
             source_data.append([
-                ("YouTube" if src.lower() == "youtube" else src.title()),
+                formatted_src,
                 str(counts.get("Positive", 0)),
-                str(counts.get("Negative", 0)), str(counts.get("Neutral", 0)),
+                str(counts.get("Negative", 0)), 
+                str(counts.get("Neutral", 0)),
             ])
         source_table = Table(source_data, colWidths=[1.5 * inch, 1.2 * inch, 1.2 * inch, 1.2 * inch])
         source_table.setStyle(TableStyle([
@@ -139,104 +162,46 @@ def _build_sentiment_page(sentiment_summary: dict) -> list:
     elements.append(PageBreak())
     return elements
 
-
-# ── Page 4: Negative Analysis ──────────────────────────────
-def _build_negative_analysis_page(topics_result: dict, worst_docs: list[dict]) -> list:
+# ── Page 5: Issues & Recommendations ───────────────────────
+def _build_issues_and_recommendations(issues: list, strategy_report: dict) -> list:
+    if not issues:
+        return []
+        
     elements = []
-    elements.append(Paragraph("Negative Sentiment Deep Dive", _styles["SectionHeading"]))
-
-    if topics_result.get("status") == "success":
-        elements.append(Paragraph("Negative Topic Clusters", _styles["SubHeading"]))
-        for topic in topics_result.get("topics", []):
-            elements.append(Paragraph(
-                f"<b>{topic['label']}</b> — {topic['document_count']} documents",
-                _styles["BodyText2"],
-            ))
-    else:
-        reason = topics_result.get("reason", "Insufficient data for topic modeling.")
-        elements.append(Paragraph(
-            f"<i>Topic modeling skipped: {reason}</i>", _styles["BodyText2"]
-        ))
-
-    elements.append(Spacer(1, 0.2 * inch))
-    elements.append(Paragraph("Most Negative Content (Sample)", _styles["SubHeading"]))
-
-    if worst_docs:
-        data = [["Source", "Date", "Excerpt"]]
-        for doc in worst_docs[:10]:
-            excerpt = doc.get("text", "")[:80] + "..."
-            data.append([
-                doc.get("source", "N/A").title(),
-                doc.get("date", "N/A"),
-                excerpt,
-            ])
-        table = Table(data, colWidths=[0.9 * inch, 0.9 * inch, 4 * inch])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(table)
-    else:
-        elements.append(Paragraph("No negative content samples available.", _styles["BodyText2"]))
-
+    elements.append(Paragraph("Issues & Recommendations", _styles["SectionHeading"]))
+    
+    issue_recs = strategy_report.get("issue_recommendations", [])
+    
+    for idx, issue in enumerate(issues):
+        cluster_label = issue.get("cluster_label")
+        heading = f"Cluster: {cluster_label}" if cluster_label else "Individual Complaint"
+        
+        elements.append(Paragraph(heading, _styles["SubHeading"]))
+        
+        # Add documents
+        for doc in issue.get("documents", []):
+            source = doc.get("source", "Unknown").replace("_", " ").title()
+            date = doc.get("date", "N/A")
+            text = doc.get("text", "")
+            
+            elements.append(Paragraph(f"Source: {source} | Date: {date}", _styles["CitationText"]))
+            elements.append(Paragraph(f'"{text}"', _styles["BodyText2"]))
+            elements.append(Spacer(1, 0.05 * inch))
+            
+        # Add recommendation
+        rec_text = "No recommendation provided."
+        if idx < len(issue_recs) and issue_recs[idx].get("recommendation"):
+            # Replace newlines with <br/> so ReportLab renders the bullets correctly
+            rec_text = issue_recs[idx].get("recommendation").replace("\n", "<br/>")
+            
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(Paragraph("<b>Recommended Action Plan:</b>", _styles["RecommendationText"]))
+        elements.append(Paragraph(rec_text, _styles["RecommendationText"]))
+        elements.append(Spacer(1, 0.3 * inch))
+        
     elements.append(PageBreak())
     return elements
 
-
-# ── Page 5: Tone + Strategy ─────────────────────────────────
-def _build_tone_strategy_page(tone_result: dict, strategy_report: dict) -> list:
-    elements = []
-    elements.append(Paragraph("Brand Tone & Strategy Analysis", _styles["SectionHeading"]))
-
-    elements.append(Paragraph("Brand Tone Profile", _styles["SubHeading"]))
-    all_scores = tone_result.get("all_scores", [])
-    if all_scores:
-        data = [["Tone", "Confidence"]]
-        for item in all_scores:
-            data.append([item["tone"], f"{item['score'] * 100:.1f}%"])
-        table = Table(data, colWidths=[2.5 * inch, 1.5 * inch])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 10),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(table)
-
-    elements.append(Spacer(1, 0.25 * inch))
-    elements.append(Paragraph("Strategy Analysis", _styles["SubHeading"]))
-    elements.append(Paragraph(
-        strategy_report.get("current_strategy", "Not available."), _styles["BodyText2"]
-    ))
-
-    elements.append(PageBreak())
-    return elements
-
-
-# ── Page 6: Recommendations ────────────────────────────────
-def _build_recommendations_page(strategy_report: dict) -> list:
-    elements = []
-    elements.append(Paragraph("Recommendations", _styles["SectionHeading"]))
-
-    recommendations = strategy_report.get("recommendations", [])
-    for i, rec in enumerate(recommendations, 1):
-        elements.append(Paragraph(f"{i}. {rec.get('title', '')}", _styles["SubHeading"]))
-        elements.append(Paragraph(rec.get("explanation", ""), _styles["BodyText2"]))
-        elements.append(Spacer(1, 0.12 * inch))
-
-    elements.append(PageBreak())
-    return elements
 
 
 # ── Page 7: Methodology + Limitations ──────────────────────
@@ -246,10 +211,10 @@ def _build_methodology_page() -> list:
 
     elements.append(Paragraph("Data Sources", _styles["SubHeading"]))
     sources_text = (
-        "This report aggregates public data collected from four sources: NewsAPI "
+        "This report aggregates public data collected from three primary sentiment sources: NewsAPI "
         "(news headlines and descriptions, last 30 days), YouTube Data API v3 "
-        "(public video comment threads), Google Play Store app reviews, and Reddit search "
-        "mentions. Supplementary brand-owned tone context is fetched from the brand's "
+        "(public video comment threads), and Google Play Store app reviews. "
+        "Supplementary brand-owned tone context is fetched from the brand's "
         "official YouTube channel."
     )
     elements.append(Paragraph(sources_text, _styles["BodyText2"]))
@@ -268,7 +233,6 @@ def _build_methodology_page() -> list:
 
     return elements
 
-
 # ── Main Function — Build Full PDF ─────────────────────────
 def generate_pdf_report(
     brand: str,
@@ -276,14 +240,12 @@ def generate_pdf_report(
     sentiment_summary: dict,
     strategy_report: dict,
     tone_result: dict,
-    topics_result: dict,
-    worst_docs: list[dict],
+    wiki_data: dict,
+    issues: list,
 ) -> str:
     """
-    Generates the complete 7-page brand intelligence PDF report.
-
-    Returns:
-        The output_path where the PDF was saved.
+    Generates the dynamic brand intelligence PDF report.
+    Returns the output_path where the PDF was saved.
     """
     print(f"[PDFGenerator] Building PDF report for '{brand}'...")
 
@@ -295,54 +257,11 @@ def generate_pdf_report(
 
     story = []
     story.extend(_build_cover_page(brand))
-    story.extend(_build_executive_summary(brand, strategy_report))
+    story.extend(_build_executive_summary(brand, wiki_data.get("general_text", ""), strategy_report))
     story.extend(_build_sentiment_page(sentiment_summary))
-    story.extend(_build_negative_analysis_page(topics_result, worst_docs))
-    story.extend(_build_tone_strategy_page(tone_result, strategy_report))
-    story.extend(_build_recommendations_page(strategy_report))
+    story.extend(_build_issues_and_recommendations(issues, strategy_report))
     story.extend(_build_methodology_page())
 
     doc.build(story)
     print(f"[PDFGenerator] PDF saved to {output_path}")
     return output_path
-
-
-# ── Quick Test ───────────────────────────────────────────────
-if __name__ == "__main__":
-    test_sentiment = {
-        "total_docs": 177, "positive_pct": 52.0, "negative_pct": 37.9, "neutral_pct": 10.2,
-        "by_source": {
-            "news": {"Positive": 60, "Negative": 45, "Neutral": 12},
-            "youtube": {"Positive": 32, "Negative": 22, "Neutral": 6},
-        },
-    }
-
-    test_strategy = {
-        "current_strategy": "Nike pursues a sustainability and collaboration-driven strategy.",
-        "strengths": ["Strong collaborations", "Sustainable product lines", "Global brand recognition"],
-        "weaknesses": ["Labor practice criticism", "Legal challenges", "Limited transparency"],
-        "recommendations": [
-            {"title": "Enhance Transparency", "explanation": "Increase public reporting on labor practices."},
-            {"title": "Resolve Legal Issues", "explanation": "Address lawsuits promptly and publicly."},
-        ],
-    }
-
-    test_tone = {
-        "all_scores": [
-            {"tone": "Inspirational", "score": 0.957},
-            {"tone": "Aggressive", "score": 0.304},
-            {"tone": "Professional", "score": 0.203},
-        ]
-    }
-
-    test_topics = {"status": "skipped", "reason": "Insufficient negative documents (67 found, need 300)."}
-
-    test_worst_docs = [
-        {"source": "news", "date": "2026-05-12", "text": "Customers are suing Nike over tariff refunds."},
-        {"source": "youtube", "date": "2026-04-01", "text": "Disappointed with Nike's recent product quality issues."},
-    ]
-
-    generate_pdf_report(
-        "Nike", "test_report.pdf", test_sentiment, test_strategy,
-        test_tone, test_topics, test_worst_docs,
-    )

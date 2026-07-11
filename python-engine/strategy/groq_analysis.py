@@ -27,26 +27,23 @@ def _build_prompt(
     sentiment_summary: dict,
     keywords: list[dict],
     tone_result: dict,
-    topics_result: dict,
+    issues: list[dict],
     wikipedia_context: str,
-    sample_negative_docs: list[str],
-    sample_positive_docs: list[str],
 ) -> str:
     """
     Constructs a structured prompt feeding all analyzed data to Groq.
     """
     keyword_list = ", ".join(kw["keyword"] for kw in keywords[:MAX_KEYWORDS_TO_SEND])
 
-    topics_section = "Not available (insufficient negative document volume for topic modeling)."
-    if topics_result.get("status") == "success":
-        topic_lines = [
-            f"- {t['label']} ({t['document_count']} documents)"
-            for t in topics_result["topics"]
-        ]
-        topics_section = "\n".join(topic_lines)
-
-    negative_examples = "\n".join(f"- {doc[:200]}" for doc in sample_negative_docs[:MAX_SAMPLE_DOCS])
-    positive_examples = "\n".join(f"- {doc[:200]}" for doc in sample_positive_docs[:MAX_SAMPLE_DOCS])
+    issues_section = ""
+    for idx, issue in enumerate(issues):
+        label = issue.get("cluster_label") or f"Individual Complaint {idx+1}"
+        issues_section += f"\n### ISSUE: {label}\n"
+        for doc in issue["documents"]:
+            source = doc.get("source", "Unknown")
+            date = doc.get("date", "Unknown")
+            text = doc.get("text", "")
+            issues_section += f"- [Source: {source}, Date: {date}]: {text}\n"
 
     prompt = f"""You are a senior brand strategy consultant analyzing the brand **{brand}** based on real collected data.
 
@@ -61,17 +58,11 @@ Total documents analyzed: {sentiment_summary['total_docs']}
 ## TOP KEYWORDS FROM PUBLIC CONVERSATION
 {keyword_list}
 
-## BRAND'S OWN TONE (from Wikipedia/brand context)
+## BRAND'S OWN TONE (from brand's official YouTube channel content)
 Primary tone detected: {tone_result.get('primary_tone', 'Unknown')}
 
-## NEGATIVE TOPIC CLUSTERS (root causes of negative sentiment)
-{topics_section}
-
-## SAMPLE NEGATIVE CONTENT
-{negative_examples if negative_examples else "Limited negative samples available."}
-
-## SAMPLE POSITIVE CONTENT
-{positive_examples if positive_examples else "Limited positive samples available."}
+## KEY NEGATIVE ISSUES & EVIDENCE
+{issues_section if issues else "No significant negative issues found."}
 
 ## BRAND BACKGROUND CONTEXT (Wikipedia)
 {wikipedia_context[:1500]}
@@ -86,7 +77,7 @@ Based ONLY on the evidence above, provide:
 
 3. **Weaknesses** (3 bullet points): What is working against {brand}, based on the data?
 
-4. **5 Specific Actionable Recommendations**: Concrete, specific actions for {brand} — not generic advice. Each should directly address something visible in the data above.
+4. **Issue-Specific Recommendations**: For EACH issue listed above, provide a concrete, specific recommendation that directly addresses the complaint. This MUST be formatted as a 2-3 point bulleted action plan explaining exactly HOW to solve the issue. Use standard dash (-) bullets. Do NOT provide brief one-liners or a single giant paragraph.
 
 Be specific and evidence-based. Do not invent facts not supported by the data provided. If data is limited in some area, acknowledge that honestly rather than speculating.
 
@@ -95,12 +86,11 @@ Respond in clean JSON format with this exact structure:
   "current_strategy": "...",
   "strengths": ["...", "...", "..."],
   "weaknesses": ["...", "...", "..."],
-  "recommendations": [
-    {{"title": "...", "explanation": "..."}},
-    {{"title": "...", "explanation": "..."}},
-    {{"title": "...", "explanation": "..."}},
-    {{"title": "...", "explanation": "..."}},
-    {{"title": "...", "explanation": "..."}}
+  "issue_recommendations": [
+    {{
+      "cluster_label": "...",
+      "recommendation": "..."
+    }}
   ]
 }}
 
@@ -115,10 +105,8 @@ def generate_strategy_report(
     sentiment_summary: dict,
     keywords: list[dict],
     tone_result: dict,
-    topics_result: dict,
+    issues: list[dict],
     wikipedia_context: str,
-    sample_negative_docs: list[str],
-    sample_positive_docs: list[str],
 ) -> dict:
     """
     Sends all analyzed brand data to Groq and returns a structured
@@ -131,7 +119,7 @@ def generate_strategy_report(
 
     prompt = _build_prompt(
         brand, sentiment_summary, keywords, tone_result,
-        topics_result, wikipedia_context, sample_negative_docs, sample_positive_docs,
+        issues, wikipedia_context
     )
 
     print(f"[GroqStrategy] Generating strategy report for '{brand}'...")
